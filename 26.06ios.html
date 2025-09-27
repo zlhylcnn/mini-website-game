@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>💕 Osman'ın Winnie Dünyası Macerası - Uzatılmış Parkur 💕</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: linear-gradient(135deg, #87CEEB 0%, #98FB98 50%, #FFE4B5 100%); font-family: 'Comic Sans MS', cursive; overflow: hidden; }
+        #gameContainer { position: relative; width: 100vw; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #gameCanvas { border: 6px solid #8B4513; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.3); max-width: 95%; max-height: 60vh; display: block; }
+        #controls { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); display: flex; gap: clamp(20px, 5vw, 40px); z-index: 100; width: 100%; max-width: 400px; justify-content: center; padding: 0 20px; box-sizing: border-box; }
+        .joystick { width: clamp(90px, 20vw, 100px); height: clamp(70px, 15vw, 100px); border-radius: 50%; background: linear-gradient(145deg, #FFE4B5 0%, #DEB887 100%); border: 4px solid #8B4513; display: flex; align-items: center; justify-content: center; font-size: clamp(24px, 6vw, 36px); user-select: none; touch-action: manipulation; cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 15px rgba(0,0,0,0.3); min-width: 70px; min-height: 70px; -webkit-touch-callout: none; -webkit-user-select: none; }
+        .joystick:active { transform: scale(0.85); box-shadow: inset 0 4px 12px rgba(0,0,0,0.3); }
+        #jumpBtn { background: linear-gradient(145deg, #FF6347 0%, #DC143C 100%); color: white; border-color: #8B0000; }
+        #leftBtn, #rightBtn { background: linear-gradient(145deg, #32CD32 0%, #228B22 100%); color: white; border-color: #006400; }
+        #startScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(45deg, #FFE4B5 0%, #DEB887 50%, #D2691E 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; color: #8B4513; }
+        #startScreen h1 { font-size: 2.8em; margin-bottom: 30px; text-shadow: 3px 3px 6px rgba(0,0,0,0.3); animation: bounce 2s infinite; text-align: center; }
+        @keyframes bounce { 0%,20%,50%,80%,100%{transform:translateY(0);} 40%{transform:translateY(-10px);} 60%{transform:translateY(-5px);} }
+        #startScreen p { font-size: 1.2em; margin-bottom: 40px; text-align: center; padding: 0 30px; line-height: 1.6; }
+        #startButton { padding: 18px 35px; font-size: 1.4em; background: linear-gradient(45deg, #FF6347, #DC143C); color: white; border: none; border-radius: 30px; cursor: pointer; box-shadow: 0 8px 15px rgba(0,0,0,0.2); transition: all 0.3s; font-weight: bold; }
+        #startButton:hover { transform: translateY(-3px) scale(1.05); box-shadow: 0 12px 20px rgba(0,0,0,0.3); }
+        #gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, #FFE4B5 0%, #DEB887 100%); color: #8B4513; padding: 40px; border-radius: 20px; text-align: center; display: none; z-index: 150; box-shadow: 0 0 30px rgba(0,0,0,0.5); border: 4px solid #8B4513; }
+        #gameOver button { margin-top: 20px; padding: 15px 30px; font-size: 1.2em; background: #FF6347; color: white; border: none; border-radius: 25px; cursor: pointer; transition: all 0.2s; }
+        #score { position: absolute; top: 20px; left: 20px; color: #8B4513; font-size: 1.4em; font-weight: bold; z-index: 100; background: rgba(255, 228, 181, 0.9); padding: 10px 15px; border-radius: 15px; box-shadow: 0 3px 10px rgba(0,0,0,0.2); border: 2px solid #8B4513; }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="startScreen">
+            <h1>🍯 26.09 🐻</h1>
+            <p>🌟 Sultan'ı Winnie'nin büyülü dünyasında kurtar!<br>🍯</p>
+            <button id="startButton">Maceraya Başla!</button>
+        </div>
+        <div id="score">Bal: <span id="honeyCount">0</span> 🍯</div>
+        <canvas id="gameCanvas" width="900" height="500"></canvas>
+        <div id="controls">
+            <div class="joystick" id="leftBtn">⬅️</div>
+            <div class="joystick" id="jumpBtn">⬆️</div>
+            <div class="joystick" id="rightBtn">➡️</div>
+        </div>
+        <div id="gameOver">
+            <h2 id="gameOverTitle">🎉 Tebrikler Osman! 🎉</h2>
+            <p id="gameOverText">Sultan kurtarıldı!</p>
+            <button onclick="resetGame()">🔄 Tekrar Oyna</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Ses efektleri ---
+        let audioContext;
+        function initAudio() { 
+            try { 
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext.suspend(); // Başlangıçta suspend edilmiş
+            } catch (e) { 
+                console.log('Ses desteklenmiyor'); 
+            } 
+        }
+        
+        function playSound(freq, duration, type = 'sine') { 
+            if (!audioContext || audioContext.state !== 'running') return;
+            try { 
+                const osc = audioContext.createOscillator(); 
+                const gain = audioContext.createGain(); 
+                osc.connect(gain); 
+                gain.connect(audioContext.destination); 
+                osc.frequency.setValueAtTime(freq, audioContext.currentTime); 
+                osc.type = type; 
+                gain.gain.setValueAtTime(0.1, audioContext.currentTime); 
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration); 
+                osc.start(); 
+                osc.stop(audioContext.currentTime + duration); 
+            } catch (e) {} 
+        }
+        
+        function playJump() { playSound(600, 0.15, 'square'); }
+        function playHoney() { playSound(800, 0.2); }
+        function playWin() { playSound(523, 0.3); setTimeout(() => playSound(659, 0.3), 300); setTimeout(() => playSound(784, 0.5), 600); }
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let gameRunning = false;
+        let keys = {};
+        let honeyCount = 0;
+        let camera = { x: 0 };
+
+        // Resimler
+        const osmanImg = new Image();
+        osmanImg.src = ''; //kişiselleştirilmiş resim linki(base64 formatında)
+        const sultanImg = new Image();
+        sultanImg.src = '';//kişiselleştirilmiş resim linki(base64 formatında)
+
+        async function loadImages() {
+            try {
+                const response1 = await window.fs.readFile('Image 1');
+                const blob1 = new Blob([response1], { type: 'image/jpeg' });
+                osmanImg.src = URL.createObjectURL(blob1);
+                const response2 = await window.fs.readFile('Image 2');
+                const blob2 = new Blob([response2], { type: 'image/jpeg' });
+                sultanImg.src = URL.createObjectURL(blob2);
+            } catch (error) {
+                console.log('Varsayılan avatarlar kullanılıyor');
+            }
+        }
+
+        // Oyuncu
+        const player = { x: 100, y: 350, width: 50, height: 50, velX: 0, velY: 0, speed: 6, jumpPower: 15, onGround: false, facing: 1 };
+
+        // Prenses
+        const princess = { x: 2200, y: 250, width: 50, height: 50, float: 0, rescued: false };
+
+        // Başlangıç platformları (seed)
+        const platforms = [
+            {x: 0, y: 450, width: 250, height: 50, type: 'ground'},
+            {x: 350, y: 380, width: 120, height: 25, type: 'tree'},
+            {x: 550, y: 330, width: 100, height: 20, type: 'branch'},
+            {x: 750, y: 280, width: 130, height: 25, type: 'tree'},
+            {x: 950, y: 350, width: 80, height: 20, type: 'mushroom'},
+            {x: 1150, y: 300, width: 120, height: 25, type: 'log'},
+            {x: 1350, y: 250, width: 100, height: 20, type: 'branch'},
+            {x: 1550, y: 320, width: 150, height: 30, type: 'tree'},
+            {x: 1800, y: 270, width: 100, height: 20, type: 'cloud'},
+            {x: 2000, y: 350, width: 120, height: 25, type: 'log'},
+            {x: 2150, y: 300, width: 200, height: 200, type: 'pooh-house'}
+        ];
+
+        // Başlangıç bal kavanozları
+        let honeyJars = [
+            {x: 400, y: 340, collected: false},
+            {x: 600, y: 290, collected: false},
+            {x: 800, y: 240, collected: false},
+            {x: 1000, y: 310, collected: false},
+            {x: 1200, y: 260, collected: false},
+            {x: 1400, y: 210, collected: false},
+            {x: 1600, y: 280, collected: false},
+            {x: 1850, y: 230, collected: false}
+        ];
+
+        // --- YENİ: Parkuru uzatan prosedür ---
+        const levelLength = 6000;
+
+        function randomRange(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+        function generateExtendedLevel(length) {
+            let last = platforms[platforms.length - 1];
+            let lastX = last.x + last.width + 180;
+
+            const types = ['tree','branch','mushroom','log','cloud'];
+
+            while (lastX < length) {
+                const type = types[Math.floor(Math.random() * types.length)];
+                let width = 100; let height = 20; let y = randomRange(220, 380);
+
+                switch(type) {
+                    case 'tree': width = randomRange(100, 180); height = randomRange(20, 35); y = randomRange(260, 360); break;
+                    case 'branch': width = randomRange(80, 140); height = randomRange(12, 20); y = randomRange(220, 340); break;
+                    case 'mushroom': width = randomRange(70, 110); height = 5; y = randomRange(260, 360); break;
+                    case 'log': width = randomRange(90, 160); height = randomRange(18, 30); y = randomRange(280, 360); break;
+                    case 'cloud': width = randomRange(100, 180); height = 25; y = randomRange(200, 300); break;
+                }
+
+                platforms.push({ x: lastX, y: y, width: width, height: height, type: type });
+
+                if (Math.random() < 0.6) {
+                    const jarX = lastX + Math.floor(width/2) + randomRange(-20, 20);
+                    const jarY = y - randomRange(30, 60);
+                    honeyJars.push({ x: jarX, y: jarY, collected: false });
+                }
+
+                if (Math.random() < 0.12) {
+                    const gap = randomRange(60, 160);
+                    const smallCount = randomRange(2,4);
+                    let groupX = lastX + width + gap;
+                    for (let s = 0; s < smallCount; s++) {
+                        const sw = randomRange(40, 80);
+                        const sy = randomRange(240, 360);
+                        platforms.push({ x: groupX, y: sy, width: sw, height: 12, type: 'branch' });
+                        if (Math.random() < 0.5) honeyJars.push({ x: groupX + sw/2, y: sy - 30, collected: false });
+                        groupX += sw + randomRange(40, 90);
+                    }
+                    lastX = groupX + 120;
+                } else {
+                    lastX += width + randomRange(120, 300);
+                }
+            }
+
+            princess.x = length + 220;
+            princess.y = 300;
+        }
+
+        generateExtendedLevel(levelLength);
+
+        // --- Çizim fonksiyonları ---
+        function drawWinnieBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB'); gradient.addColorStop(0.6, '#98FB98'); gradient.addColorStop(1, '#228B22');
+            ctx.fillStyle = gradient; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.arc(750 - camera.x * 0.1, 70, 35, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 3;
+            for (let i = 0; i < 8; i++) { const angle = (i * Math.PI) / 4; const x1 = 750 - camera.x * 0.1 + Math.cos(angle) * 40; const y1 = 70 + Math.sin(angle) * 40; const x2 = 750 - camera.x * 0.1 + Math.cos(angle) * 55; const y2 = 70 + Math.sin(angle) * 55; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+            drawPoohCloud(150 - camera.x * 0.2, 80); drawPoohCloud(400 - camera.x * 0.3, 60); drawPoohCloud(700 - camera.x * 0.2, 100); drawPoohCloud(1000 - camera.x * 0.3, 70);
+            drawBackgroundTrees(); drawBees(); drawFlowers();
+        }
+        
+        function drawPoohCloud(x, y) { ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.beginPath(); ctx.arc(x, y, 20, 0, Math.PI * 2); ctx.arc(x + 25, y, 28, 0, Math.PI * 2); ctx.arc(x + 50, y, 20, 0, Math.PI * 2); ctx.arc(x + 25, y - 18, 22, 0, Math.PI * 2); ctx.fill(); }
+        
+        function drawBackgroundTrees() { const trees = [{x: 120, y: 380, size: 50},{x: 300, y: 400, size: 40},{x: 600, y: 390, size: 45},{x: 900, y: 410, size: 35},{x: 1200, y: 385, size: 48},{x: 1500, y: 395, size: 42}]; trees.forEach(tree => { const x = tree.x - camera.x * 0.5; ctx.fillStyle = '#8B4513'; ctx.fillRect(x - 10, tree.y, 20, 120); ctx.fillStyle = '#228B22'; ctx.beginPath(); ctx.arc(x, tree.y - 10, tree.size, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#006400'; ctx.beginPath(); ctx.arc(x - 15, tree.y - 20, tree.size * 0.6, 0, Math.PI * 2); ctx.fill(); }); }
+        
+        function drawBees() { const bees = [{x: 250 + Math.sin(Date.now() * 0.003) * 40, y: 180 + Math.cos(Date.now() * 0.002) * 15},{x: 650 + Math.sin(Date.now() * 0.004) * 50, y: 160 + Math.cos(Date.now() * 0.003) * 20},{x: 1100 + Math.sin(Date.now() * 0.002) * 45, y: 200 + Math.cos(Date.now() * 0.004) * 18}]; bees.forEach(bee => { const x = bee.x - camera.x; const y = bee.y; if (x > -30 && x < canvas.width + 30) { ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.ellipse(x, y, 8, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#000'; ctx.lineWidth = 1; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x - 5 + i * 3, y - 3); ctx.lineTo(x - 5 + i * 3, y + 3); ctx.stroke(); } ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.beginPath(); ctx.ellipse(x - 6, y - 3, 4, 2, -0.3, 0, Math.PI * 2); ctx.ellipse(x + 6, y - 3, 4, 2, 0.3, 0, Math.PI * 2); ctx.fill(); } }); }
+        
+        function drawFlowers() { const flowers = [{x: 180, y: 430, color: '#FF69B4'},{x: 320, y: 440, color: '#FFD700'},{x: 480, y: 435, color: '#9370DB'},{x: 680, y: 445, color: '#FF6347'},{x: 880, y: 440, color: '#32CD32'},{x: 1080, y: 435, color: '#FF1493'},{x: 1280, y: 445, color: '#00CED1'},{x: 1480, y: 440, color: '#FFD700'}]; flowers.forEach(flower => { const x = flower.x - camera.x; const y = flower.y; if (x > -20 && x < canvas.width + 20) { ctx.strokeStyle = '#228B22'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 20); ctx.stroke(); ctx.fillStyle = flower.color; for (let i = 0; i < 5; i++) { const angle = (i * Math.PI * 2) / 5; const petalX = x + Math.cos(angle) * 6; const petalY = y + Math.sin(angle) * 6; ctx.beginPath(); ctx.arc(petalX, petalY, 4, 0, Math.PI * 2); ctx.fill(); } ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); } }); }
+
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                const x = platform.x - camera.x;
+                const y = platform.y;
+                if (x + platform.width > -50 && x < canvas.width + 50) {
+                    switch (platform.type) {
+                        case 'ground': ctx.fillStyle = '#8B4513'; ctx.fillRect(x, y, platform.width, platform.height); ctx.fillStyle = '#32CD32'; ctx.fillRect(x, y - 10, platform.width, 10); break;
+                        case 'tree': ctx.fillStyle = '#8B4513'; ctx.fillRect(x, y, platform.width, platform.height); ctx.fillStyle = '#228B22'; for (let i = 0; i < platform.width; i += 15) { ctx.beginPath(); ctx.arc(x + i + 7, y - 5, 8, 0, Math.PI * 2); ctx.fill(); } break;
+                        case 'branch': ctx.fillStyle = '#DEB887'; ctx.fillRect(x, y, platform.width, platform.height); break;
+                        case 'mushroom': ctx.fillStyle = '#CD853F'; ctx.fillRect(x, y + 15, platform.width, 5); ctx.fillStyle = '#FF6347'; ctx.beginPath(); ctx.arc(x + platform.width/2, y + 10, platform.width/2, 0, Math.PI); ctx.fill(); ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(x + platform.width/2 - 10, y + 5, 3, 0, Math.PI * 2); ctx.arc(x + platform.width/2 + 8, y + 8, 2, 0, Math.PI * 2); ctx.fill(); break;
+                        case 'log': ctx.fillStyle = '#8B4513'; ctx.fillRect(x, y, platform.width, platform.height); ctx.strokeStyle = '#654321'; ctx.lineWidth = 2; for (let i = 0; i < platform.width; i += 20) { ctx.beginPath(); ctx.arc(x + i + 10, y + platform.height/2, 8, 0, Math.PI * 2); ctx.stroke(); } break;
+                        case 'cloud': ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'; ctx.beginPath(); for (let i = 0; i < platform.width; i += 20) { ctx.arc(x + i + 10, y + 10, 12, 0, Math.PI * 2); } ctx.fill(); break;
+                        case 'pooh-house': ctx.fillStyle = '#DEB887'; ctx.fillRect(x, y, platform.width, platform.height); ctx.fillStyle = '#8B4513'; ctx.fillRect(x + platform.width/2 - 15, y + platform.height - 40, 30, 40); ctx.fillStyle = '#FFD700'; ctx.beginPath(); ctx.arc(x + platform.width/2 + 8, y + platform.height - 20, 2, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#87CEEB'; ctx.fillRect(x + 30, y + 30, 25, 25); ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 2; ctx.strokeRect(x + 30, y + 30, 25, 25); ctx.fillStyle = '#DC143C'; ctx.beginPath(); ctx.moveTo(x - 10, y); ctx.lineTo(x + platform.width/2, y - 30); ctx.lineTo(x + platform.width + 10, y); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#FFFAF0'; ctx.fillRect(x + platform.width/2 - 30, y + 20, 60, 15); ctx.strokeStyle = '#8B4513'; ctx.strokeRect(x + platform.width/2 - 30, y + 20, 60, 15); ctx.fillStyle = '#8B4513'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText('Mr. Sanders', x + platform.width/2, y + 30); break;
+                    }
+                }
+            });
+        }
+
+        function drawHoneyJars() {
+            honeyJars.forEach(jar => {
+                if (!jar.collected) {
+                    const x = jar.x - camera.x;
+                    const y = jar.y + Math.sin(Date.now() * 0.005 + jar.x) * 3;
+                    if (x > -30 && x < canvas.width + 30) {
+                        ctx.fillStyle = '#FFD700'; ctx.fillRect(x - 8, y - 5, 16, 20); ctx.fillStyle = '#8B4513'; ctx.fillRect(x - 10, y - 8, 20, 6); ctx.fillStyle = '#FFA500'; ctx.fillRect(x - 6, y + 2, 12, 8); ctx.fillStyle = '#8B4513'; ctx.font = '6px Arial'; ctx.textAlign = 'center'; ctx.fillText('HUNNY', x, y + 8); ctx.fillStyle = '#FFFF00'; ctx.beginPath(); ctx.arc(x - 3, y - 2, 2, 0, Math.PI * 2); ctx.fill(); }
+                }
+            });
+        }
+
+        function drawPlayer() {
+            const x = player.x - camera.x; const y = player.y;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.beginPath(); ctx.ellipse(x + player.width/2, y + player.height + 5, player.width/2, 5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.save(); ctx.beginPath(); ctx.arc(x + player.width/2, y + 15, 20, 0, Math.PI * 2); ctx.clip(); if (player.facing === -1) { ctx.scale(-1, 1); ctx.drawImage(osmanImg, -(x + player.width/2 + 20), y - 5, 40, 40); } else { ctx.drawImage(osmanImg, x + player.width/2 - 20, y - 5, 40, 40); } ctx.restore(); ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x + player.width/2, y + 15, 20, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#FF0000'; ctx.fillRect(x + 12, y + 35, 26, 15); ctx.fillStyle = '#0000FF'; ctx.fillRect(x + 15, y + 50, 20, 12); ctx.fillStyle = '#8B4513'; ctx.fillRect(x + 10, y + 60, 12, 6); ctx.fillRect(x + 28, y + 60, 12, 6);
+        }
+
+        function drawPrincess() {
+            const x = princess.x - camera.x; const y = princess.y + Math.sin(princess.float) * 10;
+            if (x > -100 && x < canvas.width + 100) {
+                ctx.save(); ctx.globalAlpha = 0.6; const aura = ctx.createRadialGradient(x + princess.width/2, y + princess.height/2, 0, x + princess.width/2, y + princess.height/2, 70); aura.addColorStop(0, 'rgba(255, 192, 203, 0.8)'); aura.addColorStop(1, 'rgba(255, 192, 203, 0)'); ctx.fillStyle = aura; ctx.beginPath(); ctx.arc(x + princess.width/2, y + princess.height/2, 70, 0, Math.PI * 2); ctx.fill(); ctx.restore(); ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; ctx.beginPath(); ctx.ellipse(x + princess.width/2, princess.y + princess.height + 5, princess.width/2, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.save(); ctx.beginPath(); ctx.arc(x + princess.width/2, y + 15, 20, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(sultanImg, x + princess.width/2 - 20, y - 5, 40, 40); ctx.restore(); ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x + princess.width/2, y + 15, 20, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#FF69B4'; ctx.beginPath(); ctx.moveTo(x + 10, y + 35); ctx.lineTo(x + 40, y + 35); ctx.lineTo(x + 45, y + 65); ctx.lineTo(x + 5, y + 65); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#FFD700'; const crown = [{x: x + 8, y: y - 5},{x: x + 15, y: y - 12},{x: x + 25, y: y - 15},{x: x + 35, y: y - 12},{x: x + 42, y: y - 5},{x: x + 38, y: y},{x: x + 12, y: y}]; ctx.beginPath(); ctx.moveTo(crown[0].x, crown[0].y); crown.forEach(point => ctx.lineTo(point.x, point.y)); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#FF1493'; ctx.beginPath(); ctx.arc(x + 25, y - 10, 3, 0, Math.PI * 2); ctx.fill(); for (let i = 0; i < 4; i++) { const heartX = x + princess.width/2 + Math.sin(princess.float + i * 1.5) * 35; const heartY = y - 25 + Math.cos(princess.float + i * 2) * 20; drawHeart(heartX, heartY, 6); } ctx.fillStyle = '#FFD700'; ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 2; ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center'; ctx.strokeText('SULTAN', x + princess.width/2, y + princess.height + 25); ctx.fillText('SULTAN', x + princess.width/2, y + princess.height + 25);
+            }
+        }
+
+        function drawHeart(x, y, size) { ctx.fillStyle = '#FF1493'; ctx.beginPath(); ctx.moveTo(x, y + size/4); ctx.bezierCurveTo(x, y, x - size/2, y, x - size/2, y + size/4); ctx.bezierCurveTo(x - size/2, y + size/2, x, y + size, x, y + size); ctx.bezierCurveTo(x, y + size, x + size/2, y + size/2, x + size/2, y + size/4); ctx.bezierCurveTo(x + size/2, y, x, y, x, y + size/4); ctx.fill(); }
+
+        function updatePlayer() {
+            player.velX = 0;
+            if (keys['ArrowLeft'] || keys['left']) { player.velX = -player.speed; player.facing = -1; }
+            if (keys['ArrowRight'] || keys['right']) { player.velX = player.speed; player.facing = 1; }
+            if ((keys['ArrowUp'] || keys['jump']) && player.onGround) { player.velY = -player.jumpPower; player.onGround = false; playJump(); keys['jump'] = false; }
+            player.velY += 0.8; if (player.velY > 15) player.velY = 15;
+            player.x += player.velX; player.y += player.velY;
+            if (player.x < 0) player.x = 0;
+            if (player.y > canvas.height - player.height) { player.y = canvas.height - player.height; player.velY = 0; player.onGround = true; }
+            camera.x = player.x - canvas.width / 3;
+            if (camera.x < 0) camera.x = 0;
+        }
+
+        function checkCollisions() {
+            player.onGround = false;
+            platforms.forEach(platform => {
+                if (player.x < platform.x + platform.width && player.x + player.width > platform.x && player.y < platform.y + platform.height && player.y + player.height > platform.y) {
+                    if (player.velY > 0 && player.y < platform.y) { player.y = platform.y - player.height; player.velY = 0; player.onGround = true; }
+                }
+            });
+            if (player.y >= canvas.height - player.height) { player.y = canvas.height - player.height; player.velY = 0; player.onGround = true; }
+            honeyJars.forEach(jar => { if (!jar.collected && player.x < jar.x + 20 && player.x + player.width > jar.x - 20 && player.y < jar.y + 20 && player.y + player.height > jar.y - 20) { jar.collected = true; honeyCount++; document.getElementById('honeyCount').textContent = honeyCount; playHoney(); } });
+            if (player.x < princess.x + princess.width && player.x + player.width > princess.x && player.y < princess.y + princess.height && player.y + player.height > princess.y) { if (!princess.rescued) { winGame(); } }
+        }
+
+        function winGame() { princess.rescued = true; gameRunning = false; playWin(); setTimeout(() => { document.getElementById('gameOverTitle').innerHTML = '🎉 Tebrikler Osman! 🍯'; document.getElementById('gameOverText').innerHTML = `Sultan Winnie'nin dünyasında kurtarıldı!<br>💕 ${honeyCount} bal kavanozuyla aşkın gücü kazandı! 💕`; document.getElementById('gameOver').style.display = 'block'; }, 500); }
+
+        function resetGame() {
+            player.x = 100; player.y = 350; player.velX = 0; player.velY = 0; player.onGround = false; player.facing = 1;
+            princess.rescued = false; princess.float = 0; honeyCount = 0; document.getElementById('honeyCount').textContent = honeyCount; camera.x = 0; honeyJars.forEach(jar => jar.collected = false); document.getElementById('gameOver').style.display = 'none'; gameRunning = true; gameLoop();
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawWinnieBackground(); drawPlatforms(); drawHoneyJars(); drawPlayer(); drawPrincess();
+            updatePlayer(); checkCollisions(); princess.float += 0.03;
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Kontroller - iOS Optimizasyonlu
+        document.addEventListener('keydown', (e) => { keys[e.code] = true; e.preventDefault(); });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; e.preventDefault(); });
+        
+        ['leftBtn', 'rightBtn', 'jumpBtn'].forEach(btnId => { 
+            const btn = document.getElementById(btnId); 
+            const key = btnId === 'leftBtn' ? 'left' : btnId === 'rightBtn' ? 'right' : 'jump'; 
+            
+            btn.addEventListener('touchstart', (e) => { 
+                keys[key] = true; 
+                e.preventDefault(); 
+                e.stopPropagation();
+            }); 
+            
+            btn.addEventListener('touchend', (e) => { 
+                keys[key] = false; 
+                e.preventDefault(); 
+                e.stopPropagation();
+            }); 
+            
+            btn.addEventListener('mousedown', () => keys[key] = true); 
+            btn.addEventListener('mouseup', () => keys[key] = false); 
+            btn.addEventListener('mouseleave', () => keys[key] = false); 
+        });
+
+        // Oyun başlatma - iOS Audio Optimizasyonlu
+        document.getElementById('startButton').addEventListener('click', async () => { 
+            document.getElementById('startScreen').style.display = 'none'; 
+            initAudio(); 
+            
+            // Kullanıcı etkileşiminden sonra audio context'i resume et
+            if (audioContext && audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+            
+            gameRunning = true; 
+            loadImages(); 
+            gameLoop(); 
+        });
+
+        // Canvas boyutu - iOS Optimizasyonlu
+        function resizeCanvas() { 
+            const maxWidth = Math.min(900, window.innerWidth - 20); 
+            const maxHeight = Math.min(500, window.innerHeight * 0.6);
+            
+            const pixelRatio = window.devicePixelRatio || 1;
+            canvas.width = maxWidth * pixelRatio;
+            canvas.height = maxHeight * pixelRatio;
+            canvas.style.width = maxWidth + 'px'; 
+            canvas.style.height = maxHeight + 'px'; 
+            
+            ctx.scale(pixelRatio, pixelRatio);
+        }
+        
+        window.addEventListener('resize', resizeCanvas); 
+        resizeCanvas();
+
+        // iOS için zoom engelleme
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', function(e) {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // Resimleri önceden yükle
+        loadImages();
+    </script>
+</body>
+</html>
